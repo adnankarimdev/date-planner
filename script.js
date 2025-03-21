@@ -27,14 +27,26 @@ const systemInstruction = mapsFunction.systemInstructions;
 const functionDeclarations = mapsFunction.declarations.map((declaration) => ({
   ...declaration,
   callback: (args) => {
-    const { location, caption } = args;
-    renderPage(location, caption);
+    switch (declaration.name) {
+      case "recommend_place":
+        const { location, caption } = args;
+        renderPage(location, caption);
+        break;
+      case "recommend_restaurant":
+        const { location: restLocation, cuisine, priceRange, ambiance } = args;
+        renderRestaurant(restLocation, cuisine, priceRange, ambiance);
+        break;
+      case "plan_date":
+        const { city, timeOfDay, activities } = args;
+        renderDatePlan(city, timeOfDay, activities);
+        break;
+    }
   },
 }));
 
 const chat = async (userText) => {
   try {
-    const temperature = 2; // High temperature for answer variety
+    const temperature = 2;
     const { response } = await client
       .getGenerativeModel(
         { model: "models/gemini-2.0-flash-exp", systemInstruction },
@@ -51,10 +63,14 @@ const chat = async (userText) => {
         tools: [{ functionDeclarations }],
       });
 
-    const call = response.functionCalls()[0];
-
-    if (call) {
-      functionDeclarations[0].callback(call.args);
+    const calls = response.functionCalls();
+    for (const call of calls) {
+      const declaration = functionDeclarations.find(
+        (d) => d.name === call.name
+      );
+      if (declaration) {
+        declaration.callback(call.args);
+      }
     }
   } catch (e) {
     console.error(e);
@@ -84,6 +100,48 @@ function renderPage(location, caption = "") {
       ${caption ? html`<div id="caption"><p>${caption}</p></div>` : ""}
       <div id="presets-container">
         <span id="take-me-somewhere">Take me somewhere...</span>
+        <div id="presets">
+          ${presets.map(
+            ([name, message]) =>
+              html`<button @click=${() => chat(message)} class="preset">
+                ${name}
+              </button>`
+          )}
+        </div>
+      </div>
+    `,
+    root
+  );
+}
+
+function renderRestaurant(location, cuisine, priceRange, ambiance) {
+  const root = document.querySelector("#root");
+  render(
+    html`
+      ${mapsFunction.embedRestaurant(location, cuisine, priceRange, ambiance)}
+      <div id="presets-container">
+        <span id="take-me-somewhere">Try something else...</span>
+        <div id="presets">
+          ${presets.map(
+            ([name, message]) =>
+              html`<button @click=${() => chat(message)} class="preset">
+                ${name}
+              </button>`
+          )}
+        </div>
+      </div>
+    `,
+    root
+  );
+}
+
+function renderDatePlan(city, timeOfDay, activities) {
+  const root = document.querySelector("#root");
+  render(
+    html`
+      ${mapsFunction.embedDatePlan(city, activities)}
+      <div id="presets-container">
+        <span id="take-me-somewhere">Plan another date...</span>
         <div id="presets">
           ${presets.map(
             ([name, message]) =>
